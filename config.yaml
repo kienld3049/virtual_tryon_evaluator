@@ -1,0 +1,45 @@
+# Virtual Try-On Evaluation Configuration
+
+paths:
+  original_dir: "../12A_THPT_HATRUNG"
+  generated_dir: "../CatVtion_12A_THPT_HATRUNG"
+  output_dir: "./evaluation_results"
+
+evaluation:
+  # Metrics to compute
+  metrics:
+    enable_ssim: true
+    enable_psnr: true
+    enable_lpips: true
+    enable_fid: true
+    enable_mse: true
+    enable_color_distance: true
+    enable_edge_consistency: true
+  
+  # Image processing
+  processing:
+    resize_images: null  # [512, 512] or null to keep original size
+    batch_size: 8
+    device: "cpu"  # "cuda" or "cpu"
+  
+  # Output options
+  output:
+    save_detailed_csv: true
+    save_summary_json: true
+    save_visual_samples: true
+    num_visual_samples: 10
+    generate_plots: true
+    create_html_report: true
+
+# Model settings for deep learning metrics
+models:
+  lpips:
+    net: "alex"  # "alex", "vgg", "squeeze"
+    spatial: false
+
+# Visualization settings
+visualization:
+  figure_size: [12, 8]
+  dpi: 300
+  style: "whitegrid"
+  color_palette: "husl"
