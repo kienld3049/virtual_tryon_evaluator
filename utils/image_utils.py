@@ -99,6 +99,10 @@ def get_image_pairs(original_dir, generated_dir):
     pairs = []
     
     for root, _, files in os.walk(original_dir):
+        # Skip 'masks' and 'garment' directories
+        if os.path.basename(root) in ['masks', 'garment']:
+            continue
+            
         for original_file in files:
             if not original_file.lower().endswith(('.jpg', '.jpeg', '.png')):
                 continue
@@ -124,19 +128,30 @@ def get_image_pairs(original_dir, generated_dir):
             if len(path_parts) >= 3 and path_parts[-2] == 'images':
                 group_name = path_parts[-3]
                 
+                # Setup potential mask path
+                mask_dir = os.path.join(original_dir, group_name, 'masks')
+                mask_base = os.path.splitext(original_file)[0] + ".png"; mask_path = os.path.join(mask_dir, f"mask_{mask_base}")
+                if not os.path.exists(mask_path):
+                    mask_path = None
+                
                 for gen_name in gen_names_to_try:
                     generated_path = os.path.join(generated_dir, group_name, gen_name)
                     if os.path.exists(generated_path):
-                        pairs.append((original_path, generated_path))
+                        pairs.append((original_path, generated_path, mask_path))
                         found_match = True
                         break
                         
             # 2. If not found in group, try directly in generated dir
             if not found_match:
+                # Also try looking for mask in global masks folder
+                mask_path = os.path.join(original_dir, 'masks', original_file.replace('.jpg', '.png'))
+                if not os.path.exists(mask_path):
+                    mask_path = None
+                    
                 for gen_name in gen_names_to_try:
                     generated_path = os.path.join(generated_dir, gen_name)
                     if os.path.exists(generated_path):
-                        pairs.append((original_path, generated_path))
+                        pairs.append((original_path, generated_path, mask_path))
                         found_match = True
                         break
                         
@@ -292,8 +307,17 @@ def save_best_worst_samples(metrics_df, image_pairs, metric_name, output_dir, n_
     
     # Save best samples
     for i in range(min(n_samples, len(sorted_df))):
-        idx = sorted_df.index[i]
-        original_path, generated_path = image_pairs[idx]
+        row = sorted_df.iloc[i]
+        
+        # Determine paths (handle both old list-based and new df-based formats)
+        if 'original_path' in row and 'generated_path' in row:
+            original_path = row['original_path']
+            generated_path = row['generated_path']
+        else:
+            idx = sorted_df.index[i]
+            pair = image_pairs[idx]
+            original_path = pair[0]
+            generated_path = pair[1]
         
         # Load images
         orig_img = load_image(original_path)
@@ -306,7 +330,7 @@ def save_best_worst_samples(metrics_df, image_pairs, metric_name, output_dir, n_
             fig = create_side_by_side_comparison(
                 orig_img, gen_img,
                 title1=f"Original",
-                title2=f"Generated ({metric_name}: {sorted_df.iloc[i][metric_name]:.3f})"
+                title2=f"Generated ({metric_name}: {row[metric_name]:.3f})"
             )
             
             base_name = os.path.basename(original_path).split('.')[0]
@@ -316,8 +340,16 @@ def save_best_worst_samples(metrics_df, image_pairs, metric_name, output_dir, n_
     
     # Save worst samples
     for i in range(min(n_samples, len(sorted_df))):
-        idx = sorted_df.index[-(i+1)]
-        original_path, generated_path = image_pairs[idx]
+        row = sorted_df.iloc[-(i+1)]
+        
+        if 'original_path' in row and 'generated_path' in row:
+            original_path = row['original_path']
+            generated_path = row['generated_path']
+        else:
+            idx = sorted_df.index[-(i+1)]
+            pair = image_pairs[idx]
+            original_path = pair[0]
+            generated_path = pair[1]
         
         # Load images
         orig_img = load_image(original_path)
@@ -330,7 +362,7 @@ def save_best_worst_samples(metrics_df, image_pairs, metric_name, output_dir, n_
             fig = create_side_by_side_comparison(
                 orig_img, gen_img,
                 title1=f"Original",
-                title2=f"Generated ({metric_name}: {sorted_df.iloc[-(i+1)][metric_name]:.3f})"
+                title2=f"Generated ({metric_name}: {row[metric_name]:.3f})"
             )
             
             base_name = os.path.basename(original_path).split('.')[0]

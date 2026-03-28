@@ -49,8 +49,8 @@ class ImageQualityMetrics:
         """
         try:
             if len(img1.shape) == 3 and multichannel:
-                # For color images
-                score = ssim(img1, img2, multichannel=True, channel_axis=-1, data_range=255)
+                # For color images - Removed multichannel=True to fix API crash in scikit-image >= 0.19
+                score = ssim(img1, img2, channel_axis=-1, data_range=255)
             else:
                 # For grayscale images
                 score = ssim(img1, img2, data_range=255)
@@ -153,7 +153,7 @@ class ImageQualityMetrics:
             edge2 = np.sqrt(sobelx2**2 + sobely2**2)
             
             # Calculate SSIM of edge maps
-            edge_ssim = ssim(edge1, edge2, data_range=edge1.max() - edge1.min())
+            edge_ssim = ssim(edge1, edge2, data_range=max(float(edge1.max()), 1e-6))
             return float(edge_ssim)
         except Exception as e:
             print("Error calculating edge consistency: {}".format(e))
@@ -193,11 +193,17 @@ class FIDMetric:
                 temp_dir_fake = tempfile.mkdtemp()
                 
                 try:
-                    for idx, (real_path, fake_path) in enumerate(image_pairs):
+                    for idx, pair in enumerate(image_pairs):
+                        if len(pair) >= 2:
+                            real_path = pair[0]
+                            fake_path = pair[1]
+                        else:
+                            continue
                         ext_real = os.path.splitext(real_path)[1]
                         ext_fake = os.path.splitext(fake_path)[1]
-                        os.symlink(real_path, os.path.join(temp_dir_real, f"{idx}{ext_real}"))
-                        os.symlink(fake_path, os.path.join(temp_dir_fake, f"{idx}{ext_fake}"))
+                        # Use copy instead of symlink to avoid filesystem restrictions (e.g. exFAT/NTFS)
+                        shutil.copy2(real_path, os.path.join(temp_dir_real, f"{idx}{ext_real}"))
+                        shutil.copy2(fake_path, os.path.join(temp_dir_fake, f"{idx}{ext_fake}"))
                         
                     score = self.fid_score.calculate_fid_given_paths(
                         [temp_dir_real, temp_dir_fake], 
@@ -217,5 +223,5 @@ class FIDMetric:
                 )
             return float(score)
         except Exception as e:
-            print("Error calculating FID: {}".format(e))
+            import traceback; traceback.print_exc()
             return float('inf')

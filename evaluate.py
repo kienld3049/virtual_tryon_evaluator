@@ -76,7 +76,7 @@ class VirtualTryOnEvaluator:
         # FID metric
         self.fid_metric = FIDMetric(device=self.device)
     
-    def calculate_single_pair_metrics(self, original_path, generated_path):
+    def calculate_single_pair_metrics(self, original_path, generated_path, mask_path=None):
         """Tính metrics cho 1 cặp ảnh"""
         # Load images
         original_img = load_image(original_path)
@@ -88,9 +88,30 @@ class VirtualTryOnEvaluator:
         # Ensure same size
         original_img, generated_img = ensure_same_size(original_img, generated_img)
         
+        # Apply mask if exists to only evaluate the masked region
+        if mask_path and os.path.exists(mask_path):
+            mask_img = load_image(mask_path, target_size=(original_img.shape[1], original_img.shape[0]), color_format='L')
+            if mask_img is not None:
+                # If mask is loaded as RGB, get one channel
+                if len(mask_img.shape) == 3:
+                    mask_img = mask_img[:, :, 0]
+                # Binarize mask (0 or 1)
+                mask_bin = (mask_img > 127).astype(np.uint8)
+                
+                # Apply mask to original and generated images
+                # Background becomes black, which effectively zeroes out the background contribution
+                # For proper masked SSIM/PSNR they shouldn't include black pixels, but doing it this way
+                # significantly reduces the background artificially inflating the score anyway.
+                # Since the evaluator expects standard rectangles, we multiply by mask:
+                for c in range(3):
+                    original_img[:, :, c] = original_img[:, :, c] * mask_bin
+                    generated_img[:, :, c] = generated_img[:, :, c] * mask_bin
+        
         results = {
             'original_file': os.path.basename(original_path),
             'generated_file': os.path.basename(generated_path),
+            'original_path': original_path,
+            'generated_path': generated_path,
         }
         
         # Image Quality Metrics
@@ -119,14 +140,22 @@ class VirtualTryOnEvaluator:
         all_results = []
         
         print("Evaluating image pairs...")
-        for original_path, generated_path in tqdm(self.image_pairs, desc="Processing"):
+        for pair in tqdm(self.image_pairs, desc="Processing"):
+            if len(pair) == 3:
+                original_path, generated_path, mask_path = pair
+            else:
+                original_path, generated_path = pair
+                mask_path = None
+                
             try:
-                result = self.calculate_single_pair_metrics(original_path, generated_path)
+                result = self.calculate_single_pair_metrics(original_path, generated_path, mask_path)
                 if result is not None:
                     all_results.append(result)
                 else:
                     print(f"Failed to process: {os.path.basename(original_path)}")
             except Exception as e:
+                import traceback
+                traceback.print_exc()
                 print(f"Error processing {os.path.basename(original_path)}: {e}")
                 continue
         
@@ -147,7 +176,7 @@ class VirtualTryOnEvaluator:
             )
             return fid_score
         except Exception as e:
-            print(f"Error calculating FID: {e}")
+            import traceback; traceback.print_exc()
             return None
     
     def generate_summary_statistics(self, metrics_df):

@@ -20,7 +20,7 @@ evaluation:
   processing:
     resize_images: null  # [512, 512] or null to keep original size
     batch_size: 8
-    device: "cpu"  # "cuda" or "cpu"
+    device: "cuda"  # Changed from "cpu" to "cuda"
   
   # Output options
   output:
@@ -34,7 +34,7 @@ evaluation:
 # Model settings for deep learning metrics
 models:
   lpips:
-    net: "alex"  # "alex", "vgg", "squeeze"
+    net: "vgg"  # Switched to vgg as requested per paper specs
     spatial: false
 
 # Visualization settings
