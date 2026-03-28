@@ -1,0 +1,275 @@
+=============================================================
+CLAUDE CODE REVIEW NOTES
+Virtual Try-On Evaluator
+Date: 2026-03-28
+=============================================================
+
+-------------------------------------------------------------
+SECTION 1: TEST FOLDER STRUCTURE
+-------------------------------------------------------------
+
+Location: /home/ldkien/Downloads/anh/virtual_tryon_evaluator/test
+
+Each group folder has exactly 3 subfolders:
+  <group>/
+  ├── images/    → original photos (.jpg or .JPG)
+  ├── masks/     → binary masks (.png, prefixed with "mask_")
+  └── garment/   → 1 transparent PNG garment image per group
+
+Groups and file counts:
+  12I_THPT_HATRUNG           → 20 pairs
+  36HATRUNG12Đ               → 31 pairs
+  THPT-Ha-Trung-Them         → 29 pairs
+  12G_THPT_HATRUNG           → 28 pairs
+  12B_THPT_HATRUNG           → 15 pairs
+  12E_THPT_HATRUNG           → 13 pairs
+  12A3-Huynh-Thuc-Khang-1   →  6 pairs
+  12A_THPT_HATRUNG           →  6 pairs
+  12A3-Huynh-Thuc-Khang-2   →  5 pairs
+  THPT-Tran-Hung-Dao-HY      →  1 pair
+  TOTAL                      → ~154 image-mask pairs
+
+Naming conventions:
+  Original image : <BASENAME>.jpg  or  <BASENAME>.JPG
+  Mask           : mask_<BASENAME>.png
+  Garment        : *aodai_transparent.png  or  *ao-dai_transparent.png
+
+Examples:
+  images/DNG_1042.jpg      <->  masks/mask_DNG_1042.png
+  images/Z61_3971.JPG      <->  masks/mask_Z61_3971.png
+  images/_KE_6158.jpg      <->  masks/mask__KE_6158.png  (double underscore!)
+
+-------------------------------------------------------------
+SECTION 2: COMPATIBILITY ANALYSIS
+-------------------------------------------------------------
+
+[ evaluate_with_mask.py ] -- NOT COMPATIBLE (X)
+  The code expects this layout:
+    results_dir/
+    └── <image_id>/
+        ├── result.jpg      <- generated image
+        └── mask_raw.png    <- mask
+
+  But the test folder has:
+    test/<group>/images/<BASENAME>.jpg
+    test/<group>/masks/mask_<BASENAME>.png
+
+  Three mismatches:
+  1. Code expects per-image subfolders named by image_id.
+     Your data is grouped by class, not by image.
+  2. Code expects mask named "mask_raw.png" inside each subfolder.
+     Your masks are named "mask_<BASENAME>.png" in a shared masks/ folder.
+  3. Code expects a flat original_dir with images named <image_id>.jpg.
+     Your originals are nested: <group>/images/<file>.jpg
+
+[ evaluate.py ] -- PARTIALLY COMPATIBLE (~)
+  get_image_pairs() in utils/image_utils.py DOES handle nested
+  <group>/images/<file> structure. If you provide a generated_dir
+  organized as generated_dir/<group>/result_<basename>.jpg or
+  generated_dir/<group>/<basename>_catvton_00001_.png, it will match.
+  However, this evaluator ignores masks entirely.
+
+  Generated filename patterns the code looks for (in order):
+    result_<basename>.jpg
+    result_<basename>.png
+    <basename>_catvton_00001_.png
+    <basename>.jpg  (same as original)
+
+-------------------------------------------------------------
+SECTION 3: CRITICAL BUGS IN METRIC CODE
+-------------------------------------------------------------
+
+BUG 1 -- Mask evaluator measures the wrong region [CRITICAL]
+  File: evaluate_with_mask.py -> calculate_single_pair_metrics()
+
+  After compositing, SSIM/PSNR/LPIPS are computed on the FULL image.
+  But the non-mask region is pixel-identical to the original by construction.
+  Only the masked region contains signal, so metrics are dominated by
+  the always-perfect non-mask region.
+
+  Example: a model generating pure noise inside the garment mask covering
+  10% of the image still scores SSIM ~= 0.98 -- completely misleading.
+
+  Fix: Extract masked region before computing metrics:
+    orig_masked = original_img * mask_3ch
+    comp_masked = composite_img * mask_3ch
+    ssim = calculate_ssim(orig_masked, comp_masked)
+
+BUG 2 -- SSIM API crash on scikit-image >= 0.19 [CRITICAL]
+  File: metrics/image_quality.py, line ~53
+
+  Current code:
+    ssim(img1, img2, multichannel=True, channel_axis=-1, data_range=255)
+
+  `multichannel=True` was removed in scikit-image >= 0.19.
+  Passing both multichannel and channel_axis raises TypeError.
+
+  Fix:
+    ssim(img1, img2, channel_axis=-1, data_range=255)
+
+BUG 3 -- save_best_worst_samples shows wrong images [CRITICAL]
+  File: utils/image_utils.py -> save_best_worst_samples()
+
+  After sort_values(), sorted_df.index[i] is the original pandas row
+  label, not a sequential position. If any image pair fails and is
+  skipped, the DataFrame index no longer aligns with the image_pairs
+  list -> silently loads wrong images for best/worst comparisons.
+
+  Fix: Use file paths embedded in the DataFrame (results already contain
+  'original_file'/'generated_file') instead of list indexing.
+
+BUG 4 -- edge_consistency NaN/crash on white garments [CRITICAL]
+  File: metrics/image_quality.py -> edge_consistency()
+
+  Current code:
+    edge_ssim = ssim(edge1, edge2, data_range=edge1.max() - edge1.min())
+
+  For a solid white garment, max - min ~= 0 -> division by zero or NaN.
+  This is exactly the failure case most likely for white ao dai.
+
+  Fix:
+    edge_ssim = ssim(edge1, edge2, data_range=max(float(edge1.max()), 1e-6))
+
+-------------------------------------------------------------
+SECTION 4: IMPORTANT ISSUES
+-------------------------------------------------------------
+
+ISSUE 1 -- Wrong LPIPS backbone in configs
+  File: config.yaml and config_masked.yaml
+
+  Both configs use:  net: "alex"  (AlexNet backbone)
+  Spec requires:     net: "vgg"   (VGG backbone)
+
+  AlexNet and VGG LPIPS scores are not comparable to VITON-HD/CatVTON
+  paper benchmarks which use VGG.
+
+ISSUE 2 -- color_histogram_distance cannot detect ao dai color drift
+  File: metrics/image_quality.py
+
+  Current implementation: RGB chi-square distance on independent channels.
+  This CANNOT detect white->yellow/gray color drift because:
+  - Operates in RGB, not HSV -- hue shifts are not isolated
+  - Chi-square on independent channels misses correlated shifts
+  - Not alignment-invariant (spec requires alignment-invariant metric)
+
+  Needs replacement with HSV-based Earth Mover's Distance:
+    from scipy.stats import wasserstein_distance
+    # Convert to HSV, compute per-channel histogram, then wasserstein_distance
+
+ISSUE 3 -- CLI double-reload bug in evaluate_with_mask.py
+  File: evaluate_with_mask.py, lines ~577-594
+
+  If user passes both --results_dir and --original_dir, image_pairs is
+  reloaded twice. The first reload uses the stale original_dir from config.
+
+  Fix: Apply all CLI overrides to config first, then reload once (same
+  pattern as evaluate.py's override_config method).
+
+ISSUE 4 -- FID instead of KID (wrong metric for small datasets)
+  File: metrics/image_quality.py -> FIDMetric class
+
+  Spec explicitly requires KID (Kernel Inception Distance) instead of FID
+  because FID requires >= 2,048 images for statistical validity.
+  Current dataset has ~154 pairs -> FID is statistically unreliable.
+
+ISSUE 5 -- Composite score formula is wrong
+  File: utils/image_utils.py
+
+  Current code: composite = (ssim + (1 - lpips)) / 2
+
+  Spec defines 7-component weighted formula:
+    20% x Color EMD Score
+    25% x NBRLS
+    20% x Garment IoU
+    15% x DISTS
+     5% x SSIM
+     5% x LPIPS
+    10% x KID
+
+  Current formula is displayed to user as "Composite Quality Score"
+  with no caveat -- misleading.
+
+-------------------------------------------------------------
+SECTION 5: MISSING METRICS (from spec)
+-------------------------------------------------------------
+
+Tier 1 -- Required (only 2 of 5 implemented):
+  SSIM                [OK] Implemented (but has API bug)
+  LPIPS               [OK] Implemented (but wrong backbone, not mask-restricted)
+  Color EMD (HSV)     [MISSING] -- priority: HIGH
+  NBRLS               [MISSING] -- needs DWPose/ViTPose pose estimator
+  Garment Mask IoU    [MISSING] -- straightforward OpenCV, high value
+
+Tier 2 -- Should have (none implemented):
+  KID                 [MISSING] -- replace FID for small datasets
+  DISTS               [MISSING] -- pip install piq, similar API to LPIPS
+  CLIP-I Score        [MISSING] -- semantic "is this still an ao dai?" check
+  Collar Integrity    [MISSING] -- custom edge detection on top ~5% of mask
+
+Extra:
+  face_similarity.py  [FILE MISSING] -- does not exist on disk, but HTML
+                      report references face_similarity and face_detection_rate
+
+-------------------------------------------------------------
+SECTION 6: MINOR ISSUES
+-------------------------------------------------------------
+
+- PSNR returns 0.0 on error instead of float('nan')
+  -> contaminates min statistics, makes errors look like poor quality
+
+- Matplotlib figures never closed in create_metrics_visualization
+  -> memory leak if called multiple times
+
+- get_image_pairs output is unsorted
+  -> non-deterministic order across runs, worsens index-alignment bug
+
+- batch_size key missing from config_masked.yaml
+  -> would raise KeyError if FID/KID is ever enabled
+
+- edge_consistency uses per-image data_range
+  -> makes cross-image comparisons of edge_consistency unreliable
+
+-------------------------------------------------------------
+SECTION 7: RECOMMENDED ACTION PLAN
+-------------------------------------------------------------
+
+Priority 1 -- Fix immediately (correctness broken):
+  [ ] Remove multichannel=True from SSIM call
+  [ ] Fix mask-region metric computation in evaluate_with_mask.py
+  [ ] Fix save_best_worst_samples index alignment
+  [ ] Fix edge_consistency near-zero data_range
+
+Priority 2 -- Fix before publishing results:
+  [ ] Switch LPIPS backbone to VGG in both configs
+  [ ] Implement Color EMD (HSV) to replace color_histogram_distance
+  [ ] Fix CLI double-reload in evaluate_with_mask.py
+  [ ] Replace FID with KID
+  [ ] Fix PSNR to return NaN on error
+
+Priority 3 -- Implement missing spec metrics:
+  [ ] Color EMD (HSV) -- scipy.stats.wasserstein_distance
+  [ ] Garment Mask IoU -- OpenCV, straightforward
+  [ ] DISTS -- pip install piq, near-identical API to LPIPS
+  [ ] KID -- piq library or custom implementation
+  [ ] NBRLS -- requires DWPose or ViTPose for body keypoints
+  [ ] Collar Integrity Score -- custom edge detection
+
+Priority 4 -- Fix structure mismatch for evaluate_with_mask.py:
+  OPTION A: Write adapter script to remap test folder layout into
+            the format evaluate_with_mask.py expects (no code changes).
+            test/<group>/images/<BASE>.jpg  ->  results_dir/<BASE>/result.jpg
+            test/<group>/masks/mask_<BASE>.png  ->  results_dir/<BASE>/mask_raw.png
+  OPTION B: Modify evaluate_with_mask.py to natively support the
+            group/images/ + group/masks/mask_*.png structure (RECOMMENDED).
+            Avoids data duplication, more robust long-term.
+
+Priority 5 -- Cleanup:
+  [ ] Sort get_image_pairs output for reproducibility
+  [ ] Close matplotlib figures after saving
+  [ ] Add batch_size to config_masked.yaml
+  [ ] Implement or remove face_similarity.py dead code references
+  [ ] Update composite score formula to match spec weighting
+
+=============================================================
+END OF NOTES
+=============================================================
