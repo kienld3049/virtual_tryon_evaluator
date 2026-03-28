@@ -32,10 +32,16 @@ from utils import (
 class VirtualTryOnEvaluator:
     """Main evaluator class cho Virtual Try-On"""
     
-    def __init__(self, config_path='config.yaml'):
+    def __init__(self, config_path='config.yaml', override_config=None):
         """Initialize evaluator với config file"""
         with open(config_path, 'r', encoding='utf-8') as f:
             self.config = yaml.safe_load(f)
+            
+        # Apply overrides BEFORE initializing anything
+        if override_config:
+            for k, v in override_config.get('paths', {}).items():
+                if v:
+                    self.config['paths'][k] = v
         
         # Setup device
         if TORCH_AVAILABLE and self.config['evaluation']['processing']['device'] == 'cuda' and torch.cuda.is_available():
@@ -136,7 +142,8 @@ class VirtualTryOnEvaluator:
             fid_score = self.fid_metric.calculate_fid_from_paths(
                 self.config['paths']['original_dir'],
                 self.config['paths']['generated_dir'],
-                batch_size=self.config['evaluation']['processing']['batch_size']
+                batch_size=self.config['evaluation']['processing']['batch_size'],
+                image_pairs=self.image_pairs
             )
             return fid_score
         except Exception as e:
@@ -418,18 +425,17 @@ def main():
     if not os.path.exists(args.config):
         print(f"Config file not found: {args.config}")
         sys.exit(1)
+        
+    override_config = {
+        'paths': {
+            'original_dir': args.original_dir,
+            'generated_dir': args.generated_dir,
+            'output_dir': args.output_dir
+        }
+    }
     
     # Initialize evaluator
-    evaluator = VirtualTryOnEvaluator(args.config)
-    
-    # Override paths if provided
-    if args.original_dir:
-        evaluator.config['paths']['original_dir'] = args.original_dir
-    if args.generated_dir:
-        evaluator.config['paths']['generated_dir'] = args.generated_dir
-    if args.output_dir:
-        evaluator.config['paths']['output_dir'] = args.output_dir
-        evaluator.output_dir = args.output_dir
+    evaluator = VirtualTryOnEvaluator(args.config, override_config=override_config)
     
     # Run evaluation
     try:

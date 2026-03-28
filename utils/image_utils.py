@@ -87,7 +87,7 @@ def ensure_same_size(img1, img2, method='resize_smaller'):
 
 def get_image_pairs(original_dir, generated_dir):
     """
-    Tìm và map các cặp ảnh gốc-sinh
+    Tìm và map các cặp ảnh gốc-sinh support cấu trúc nested
     
     Args:
         original_dir: thư mục chứa ảnh gốc
@@ -98,26 +98,51 @@ def get_image_pairs(original_dir, generated_dir):
     """
     pairs = []
     
-    # Get all original images
-    original_files = [f for f in os.listdir(original_dir) 
-                     if f.lower().endswith(('.jpg', '.jpeg', '.png'))]
-    
-    for original_file in original_files:
-        # Extract base name (e.g., TNTMEDIA-1 from TNTMEDIA-1.jpg)
-        base_name = os.path.splitext(original_file)[0]
-        
-        # Construct expected generated filename
-        generated_file = f"{base_name}_catvton_00001_.png"
-        
-        original_path = os.path.join(original_dir, original_file)
-        generated_path = os.path.join(generated_dir, generated_file)
-        
-        # Check if generated file exists
-        if os.path.exists(generated_path):
-            pairs.append((original_path, generated_path))
-        else:
-            print(f"Warning: Generated file not found for {original_file}")
-    
+    for root, _, files in os.walk(original_dir):
+        for original_file in files:
+            if not original_file.lower().endswith(('.jpg', '.jpeg', '.png')):
+                continue
+                
+            original_path = os.path.join(root, original_file)
+            base_name = os.path.splitext(original_file)[0]
+            
+            # Check for our typical generator prefixes/suffixes
+            gen_names_to_try = [
+                f"result_{base_name}.jpg",
+                f"result_{base_name}.png",
+                f"{base_name}_catvton_00001_.png",
+                original_file
+            ]
+            
+            # If the original file is inside a specific group (e.g., group_name/images)
+            rel_path = os.path.relpath(original_path, original_dir)
+            path_parts = rel_path.split(os.sep)
+            
+            found_match = False
+            
+            # 1. Try finding in matching group subdirectory if nested
+            if len(path_parts) >= 3 and path_parts[-2] == 'images':
+                group_name = path_parts[-3]
+                
+                for gen_name in gen_names_to_try:
+                    generated_path = os.path.join(generated_dir, group_name, gen_name)
+                    if os.path.exists(generated_path):
+                        pairs.append((original_path, generated_path))
+                        found_match = True
+                        break
+                        
+            # 2. If not found in group, try directly in generated dir
+            if not found_match:
+                for gen_name in gen_names_to_try:
+                    generated_path = os.path.join(generated_dir, gen_name)
+                    if os.path.exists(generated_path):
+                        pairs.append((original_path, generated_path))
+                        found_match = True
+                        break
+                        
+            if not found_match:
+                print(f"Warning: Generated file not found for {original_file}")
+                
     return pairs
 
 

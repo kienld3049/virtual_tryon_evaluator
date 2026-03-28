@@ -173,7 +173,7 @@ class FIDMetric:
             print("Warning: pytorch-fid not installed. FID metric will not be available.")
             self.fid_score = None
     
-    def calculate_fid_from_paths(self, path1, path2, batch_size=50, dims=2048):
+    def calculate_fid_from_paths(self, path1, path2, batch_size=50, dims=2048, image_pairs=None):
         """
         Tính FID score giữa 2 thư mục ảnh
         Returns: float (lower is better)
@@ -182,13 +182,39 @@ class FIDMetric:
             print("FID metric not available")
             return float('inf')
             
+        import tempfile
+        import shutil
+        import os
+        
         try:
-            score = self.fid_score.calculate_fid_given_paths(
-                [path1, path2], 
-                batch_size=batch_size,
-                device=self.device,
-                dims=dims
-            )
+            if image_pairs:
+                # Create temp lists of symbolic links if we have nested dirs to handle pytorch-fid
+                temp_dir_real = tempfile.mkdtemp()
+                temp_dir_fake = tempfile.mkdtemp()
+                
+                try:
+                    for idx, (real_path, fake_path) in enumerate(image_pairs):
+                        ext_real = os.path.splitext(real_path)[1]
+                        ext_fake = os.path.splitext(fake_path)[1]
+                        os.symlink(real_path, os.path.join(temp_dir_real, f"{idx}{ext_real}"))
+                        os.symlink(fake_path, os.path.join(temp_dir_fake, f"{idx}{ext_fake}"))
+                        
+                    score = self.fid_score.calculate_fid_given_paths(
+                        [temp_dir_real, temp_dir_fake], 
+                        batch_size=min(batch_size, len(image_pairs) if image_pairs else batch_size),
+                        device=self.device,
+                        dims=dims
+                    )
+                finally:
+                    shutil.rmtree(temp_dir_real)
+                    shutil.rmtree(temp_dir_fake)
+            else:
+                score = self.fid_score.calculate_fid_given_paths(
+                    [path1, path2], 
+                    batch_size=batch_size,
+                    device=self.device,
+                    dims=dims
+                )
             return float(score)
         except Exception as e:
             print("Error calculating FID: {}".format(e))
