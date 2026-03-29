@@ -1,0 +1,107 @@
+{
+  "summary_statistics": {
+    "ssim": {
+      "mean": 0.8030816021069709,
+      "std": 0.08598948401159283,
+      "median": 0.8174363039472126,
+      "min": 0.5446590188944935,
+      "max": 0.9246395167372635,
+      "q25": 0.7398365230173346,
+      "q75": 0.8767209467590765
+    },
+    "psnr": {
+      "mean": 13.229142259155742,
+      "std": 5.586276742114214,
+      "median": 11.619880288259546,
+      "min": 5.032557775094272,
+      "max": 25.0944545856364,
+      "q25": 8.94385668543592,
+      "q75": 17.84278918254143
+    },
+    "mse": {
+      "mean": 5635.3160226278305,
+      "std": 5047.781009085034,
+      "median": 4478.540949396658,
+      "min": 201.203208666815,
+      "max": 20409.13429262812,
+      "q25": 1072.3721207559906,
+      "q75": 8292.676187948724
+    },
+    "lpips": {
+      "mean": 0.2991709145052092,
+      "std": 0.07610733125452857,
+      "median": 0.2830660194158554,
+      "min": 0.15749554336071014,
+      "max": 0.49859750270843506,
+      "q25": 0.24317796528339386,
+      "q75": 0.3396047577261925
+    },
+    "color_distance": {
+      "mean": 0.40118575586385025,
+      "std": 0.15528551656490955,
+      "median": 0.4072800278663635,
+      "min": 0.06725719198584557,
+      "max": 0.7166635394096375,
+      "q25": 0.28726196537415183,
+      "q75": 0.5221363082528114
+    },
+    "edge_consistency": {
+      "mean": 0.8273260286944034,
+      "std": 0.05257803173010628,
+      "median": 0.8430343378425282,
+      "min": 0.6706682293508867,
+      "max": 0.9045704502116686,
+      "q25": 0.7943148030670265,
+      "q75": 0.867842581556449
+    }
+  },
+  "fid_score": 80.28548219759523,
+  "total_pairs": 154,
+  "evaluation_date": "2026-03-29T16:11:25.767780",
+  "config": {
+    "paths": {
+      "original_dir": "/media/hmi/TRANSCEND/white-aodai-dataset-grouped/test",
+      "generated_dir": "/media/hmi/TRANSCEND/catviton/test_results_finetuned_batch_fixed",
+      "output_dir": "/media/hmi/TRANSCEND/catviton/evaluation_results_finetuned"
+    },
+    "evaluation": {
+      "metrics": {
+        "enable_ssim": true,
+        "enable_psnr": true,
+        "enable_lpips": true,
+        "enable_fid": true,
+        "enable_mse": true,
+        "enable_color_distance": true,
+        "enable_edge_consistency": true
+      },
+      "processing": {
+        "resize_images": null,
+        "batch_size": 8,
+        "device": "cuda"
+      },
+      "output": {
+        "save_detailed_csv": true,
+        "save_summary_json": true,
+        "save_visual_samples": true,
+        "num_visual_samples": 10,
+        "generate_plots": true,
+        "create_html_report": true
+      }
+    },
+    "models": {
+      "lpips": {
+        "net": "vgg",
+        "spatial": false
+      }
+    },
+    "visualization": {
+      "figure_size": [
+        12,
+        8
+      ],
+      "dpi": 300,
+      "style": "whitegrid",
+      "color_palette": "husl"
+    }
+  }
+}

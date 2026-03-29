@@ -100,9 +100,18 @@ class VirtualTryOnEvaluator:
                 
                 # Apply mask to original and generated images
                 # Background becomes black, which effectively zeroes out the background contribution
-                # For proper masked SSIM/PSNR they shouldn't include black pixels, but doing it this way
-                # significantly reduces the background artificially inflating the score anyway.
-                # Since the evaluator expects standard rectangles, we multiply by mask:
+                # CROP to the bounding box of the mask so that the metrics are not artificially inflated
+                # by the large perfect black background areas
+                y_indices, x_indices = np.where(mask_bin > 0)
+                if len(y_indices) > 0 and len(x_indices) > 0:
+                    y_min, y_max = y_indices.min(), int(y_indices.max() + 1)
+                    x_min, x_max = x_indices.min(), int(x_indices.max() + 1)
+                    
+                    original_img = original_img[y_min:y_max, x_min:x_max]
+                    generated_img = generated_img[y_min:y_max, x_min:x_max]
+                    mask_bin = mask_bin[y_min:y_max, x_min:x_max]
+                
+                # Zero out the remaining background within the bounding box
                 for c in range(3):
                     original_img[:, :, c] = original_img[:, :, c] * mask_bin
                     generated_img[:, :, c] = generated_img[:, :, c] * mask_bin

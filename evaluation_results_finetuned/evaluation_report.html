@@ -1,0 +1,125 @@
+
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Virtual Try-On Evaluation Report</title>
+            <style>
+                body { font-family: Arial, sans-serif; margin: 40px; }
+                .header { background-color: #f0f0f0; padding: 20px; border-radius: 5px; }
+                .section { margin: 30px 0; }
+                .metric-table { border-collapse: collapse; width: 100%; }
+                .metric-table th, .metric-table td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+                .metric-table th { background-color: #f2f2f2; }
+                .highlight { background-color: #fffacd; }
+                .good { color: green; font-weight: bold; }
+                .bad { color: red; font-weight: bold; }
+            </style>
+        </head>
+        <body>
+            <div class="header">
+                <h1>Virtual Try-On Evaluation Report</h1>
+                <p>Evaluation Date: 2026-03-29 16:12:43</p>
+                <p>Total Image Pairs: 154</p>
+                <p>Device Used: cuda</p>
+            </div>
+            
+            <div class="section">
+                <h2>Summary Statistics</h2>
+                <table class="metric-table">
+                    <tr><th>Metric</th><th>Mean</th><th>Std</th><th>Median</th><th>Min</th><th>Max</th><th>Interpretation</th></tr>
+        
+                    <tr class="good">
+                        <td>SSIM</td>
+                        <td>0.8031</td>
+                        <td>0.0860</td>
+                        <td>0.8174</td>
+                        <td>0.5447</td>
+                        <td>0.9246</td>
+                        <td>Higher is better (0-1)</td>
+                    </tr>
+                
+                    <tr class="good">
+                        <td>PSNR</td>
+                        <td>13.2291</td>
+                        <td>5.5863</td>
+                        <td>11.6199</td>
+                        <td>5.0326</td>
+                        <td>25.0945</td>
+                        <td>Higher is better (dB)</td>
+                    </tr>
+                
+                    <tr class="bad">
+                        <td>MSE</td>
+                        <td>5635.3160</td>
+                        <td>5047.7810</td>
+                        <td>4478.5409</td>
+                        <td>201.2032</td>
+                        <td>20409.1343</td>
+                        <td>Lower is better</td>
+                    </tr>
+                
+                    <tr class="good">
+                        <td>LPIPS</td>
+                        <td>0.2992</td>
+                        <td>0.0761</td>
+                        <td>0.2831</td>
+                        <td>0.1575</td>
+                        <td>0.4986</td>
+                        <td>Lower is better (0-1)</td>
+                    </tr>
+                
+                    <tr class="">
+                        <td>COLOR_DISTANCE</td>
+                        <td>0.4012</td>
+                        <td>0.1553</td>
+                        <td>0.4073</td>
+                        <td>0.0673</td>
+                        <td>0.7167</td>
+                        <td>Lower is better</td>
+                    </tr>
+                
+                    <tr class="good">
+                        <td>EDGE_CONSISTENCY</td>
+                        <td>0.8273</td>
+                        <td>0.0526</td>
+                        <td>0.8430</td>
+                        <td>0.6707</td>
+                        <td>0.9046</td>
+                        <td>Higher is better (0-1)</td>
+                    </tr>
+                
+                <tr class="">
+                    <td>FID</td>
+                    <td colspan="5">80.29</td>
+                    <td>Lower is better (< 30 is good)</td>
+                </tr>
+            
+                </table>
+            </div>
+            
+            <div class="section">
+                <h2>Analysis</h2>
+                <h3>Generated Visualizations:</h3>
+                <ul>
+                    <li><strong>metric_distributions.png</strong>: Distribution plots cho tất cả metrics</li>
+                    <li><strong>correlation_matrix.png</strong>: Correlation matrix giữa các metrics</li>
+                    <li><strong>summary_plots.png</strong>: Tổng quan performance</li>
+                    <li><strong>visual_samples/</strong>: Best/worst examples cho từng metric</li>
+                </ul>
+                
+                <h3>Key Findings:</h3>
+        <li>✅ Excellent structural similarity (SSIM > 0.8)</li><li>⚠️ Moderate perceptual similarity (0.2 < LPIPS < 0.5)</li><li>⚠️ Moderate FID score (30 < 80.3 < 100)</li>
+                </ul>
+            </div>
+            
+            <div class="section">
+                <h2>Files Generated</h2>
+                <ul>
+                    <li><strong>detailed_metrics.csv</strong>: Chi tiết metrics cho từng ảnh</li>
+                    <li><strong>summary_statistics.json</strong>: Summary statistics</li>
+                    <li><strong>evaluation_report.html</strong>: Báo cáo này</li>
+                </ul>
+            </div>
+        </body>
+        </html>
+        
