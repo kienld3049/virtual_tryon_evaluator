@@ -271,5 +271,134 @@ Priority 5 -- Cleanup:
   [ ] Update composite score formula to match spec weighting
 
 =============================================================
+UPDATE — 2026-03-29 (after pull, commit c5d6eed)
+"Refactor evaluation metrics to support masks and update model configurations"
+=============================================================
+
+-------------------------------------------------------------
+WHAT CHANGED IN THE LATEST COMMIT
+-------------------------------------------------------------
+
+Files modified: config.yaml, evaluate.py, metrics/image_quality.py,
+                utils/image_utils.py
+
+New behaviors added:
+  - FIDMetric now accepts image_pairs and copies matched images into
+    temp directories for pytorch-fid (supports nested dataset structure)
+  - get_image_pairs now returns triples (original, generated, mask_path)
+    and attempts to find masks under <group>/masks/ with fallback to
+    original_dir/masks/
+  - evaluate.py refactored: applies CLI path overrides BEFORE loading
+    image_pairs (fixes override ordering for this evaluator)
+  - config.yaml: LPIPS backbone changed to "vgg", device changed to
+    "cuda", batch_size added
+  - requirements.txt: pins scikit-image==0.21.0 (compatible with new
+    SSIM API)
+
+-------------------------------------------------------------
+STATUS OF EACH ISSUE AFTER PULL
+-------------------------------------------------------------
+
+[FIXED]
+  BUG 2 -- SSIM multichannel=True crash
+    -> Fixed: now uses channel_axis=-1 only
+    -> File: metrics/image_quality.py
+
+  BUG 4 -- edge_consistency NaN on white garments
+    -> Fixed: data_range=max(float(edge1.max()), 1e-6)
+    -> File: metrics/image_quality.py
+
+  BUG 3 -- save_best_worst_samples wrong index (primary cause)
+    -> Fixed: now uses sorted_df.iloc[i] and prefers DataFrame-stored
+       'original_path'/'generated_path' columns
+    -> File: utils/image_utils.py
+    -> NOTE: residual unsafe fallback (list index) still exists if
+       DataFrame rows lack path columns
+
+  evaluate.py CLI override ordering
+    -> Fixed: overrides applied before loading image_pairs
+    -> File: evaluate.py
+
+[PARTIALLY FIXED]
+  ISSUE 1 -- Wrong LPIPS backbone
+    -> config.yaml: changed to "vgg"  [OK]
+    -> config_masked.yaml: still "alex"  [NOT FIXED]
+
+[NOT FIXED -- still present]
+  BUG 1 -- evaluate_with_mask.py measures metrics on full image, not
+           masked region only [CRITICAL -- highest priority remaining]
+    -> Still computing SSIM/PSNR/LPIPS on composite_img vs original_img
+       (full image). Non-mask pixels are identical => metrics inflated.
+    -> File: evaluate_with_mask.py -> calculate_single_pair_metrics()
+
+  ISSUE 2 -- color_histogram_distance uses RGB chi-square, not HSV EMD
+    -> Still cannot detect white->yellow/gray hue drift
+    -> File: metrics/image_quality.py
+
+  ISSUE 3 -- CLI double-reload in evaluate_with_mask.py
+    -> Evaluator instantiated before overrides; image_pairs reloaded
+       twice when both --results_dir and --original_dir are passed
+    -> File: evaluate_with_mask.py, main(), lines ~575-591
+
+  ISSUE 4 -- FID instead of KID
+    -> KID not implemented anywhere; FID remains
+    -> File: metrics/image_quality.py
+
+  ISSUE 5 -- Composite score formula still naive average
+    -> Still: (ssim + 1-lpips) / 2
+    -> File: utils/image_utils.py
+
+  Section 5 -- ALL missing metrics still absent:
+    Color EMD (HSV), NBRLS, Garment Mask IoU, KID, DISTS,
+    CLIP-I Score, Collar Integrity Score
+
+  face_similarity.py -- still does not exist on disk
+
+  Minor issues still present:
+    - PSNR returns 0.0 on error (should be float('nan'))
+    - Matplotlib figures not closed in create_metrics_visualization
+    - get_image_pairs output unsorted
+    - batch_size missing from config_masked.yaml
+    - edge_consistency still per-image data_range (zero-div fixed but
+      cross-image comparisons remain inconsistent)
+
+-------------------------------------------------------------
+UPDATED ACTION PLAN (revised priorities after pull)
+-------------------------------------------------------------
+
+Priority 1 -- Still critical, not yet fixed:
+  [ ] Fix mask-region metric computation in evaluate_with_mask.py
+      (BUG 1 -- most impactful remaining issue)
+  [ ] Fix CLI double-reload in evaluate_with_mask.py (ISSUE 3)
+
+Priority 2 -- Fix before publishing results:
+  [ ] Switch config_masked.yaml LPIPS backbone to "vgg"
+  [ ] Implement Color EMD (HSV) to replace color_histogram_distance
+  [ ] Replace FID with KID
+  [ ] Fix PSNR to return NaN on error
+
+Priority 3 -- Implement missing spec metrics:
+  [ ] Color EMD (HSV) -- scipy.stats.wasserstein_distance
+  [ ] Garment Mask IoU -- OpenCV, straightforward
+  [ ] DISTS -- pip install piq, near-identical API to LPIPS
+  [ ] KID -- piq library or custom implementation
+  [ ] NBRLS -- requires DWPose or ViTPose for body keypoints
+  [ ] Collar Integrity Score -- custom edge detection
+
+Priority 4 -- Fix structure mismatch (unchanged from before):
+  evaluate_with_mask.py still incompatible with test/<group>/images +
+  test/<group>/masks layout.
+  OPTION A: Adapter script (no code changes to evaluator)
+  OPTION B: Modify evaluate_with_mask.py natively (RECOMMENDED)
+
+Priority 5 -- Cleanup:
+  [ ] Remove or harden fallback in save_best_worst_samples
+  [ ] Sort get_image_pairs output for reproducibility
+  [ ] Close matplotlib figures after saving
+  [ ] Add batch_size to config_masked.yaml
+  [ ] Implement or remove face_similarity.py dead code references
+  [ ] Update composite score formula to match spec weighting
+
+=============================================================
 END OF NOTES
 =============================================================
