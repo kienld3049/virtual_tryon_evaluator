@@ -48,6 +48,7 @@ ehthumbs.db
 Thumbs.db
 
 # Project specific
-evaluation_results/*.png
-evaluation_results/visual_samples/**/*.png
+evaluation_results_baseline/
 *.csv
+evaluation_results/
+evaluation_results_finetuned/
