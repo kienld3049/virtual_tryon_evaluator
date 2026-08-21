@@ -1,9 +1,0 @@
-EVALUATION COMPLETED!
-Processed 154 image pairs
-Results saved to: /media/hmi/TRANSCEND/catviton/evaluation_results_baseline
-
-Key Metrics:
-  SSIM (avg): 0.939 ± 0.048
-  LPIPS (avg): 0.098 ± 0.058
-  PSNR (avg): 21.9 ± 7.0 dB
-  FID Score: 80.54
