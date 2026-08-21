@@ -289,6 +289,104 @@ def create_summary_plots(metrics_df, save_dir=None):
     return fig
 
 
+_DNN_FACE_NET = None
+
+def _get_dnn_face_net():
+    """Download and cache OpenCV SSD ResNet-10 DNN face detector model."""
+    global _DNN_FACE_NET
+    if _DNN_FACE_NET is not None:
+        return _DNN_FACE_NET
+        
+    try:
+        model_dir = os.path.join(os.path.expanduser("~"), ".cache", "opencv_dnn")
+        os.makedirs(model_dir, exist_ok=True)
+        
+        prototxt_path = os.path.join(model_dir, "deploy.prototxt")
+        caffemodel_path = os.path.join(model_dir, "res10_300x300_ssd_iter_140000.caffemodel")
+        
+        prototxt_url = "https://raw.githubusercontent.com/opencv/opencv/master/samples/dnn/face_detector/deploy.prototxt"
+        caffemodel_url = "https://raw.githubusercontent.com/opencv/opencv_3rdparty/dnn_samples_face_detector_20170830/res10_300x300_ssd_iter_140000.caffemodel"
+        
+        import urllib.request
+        if not os.path.exists(prototxt_path):
+            print("Downloading OpenCV DNN face detector prototxt...")
+            urllib.request.urlretrieve(prototxt_url, prototxt_path)
+        if not os.path.exists(caffemodel_path):
+            print("Downloading OpenCV DNN face detector weights (~5MB)...")
+            urllib.request.urlretrieve(caffemodel_url, caffemodel_path)
+            
+        _DNN_FACE_NET = cv2.dnn.readNetFromCaffe(prototxt_path, caffemodel_path)
+        return _DNN_FACE_NET
+    except Exception as e:
+        print(f"Warning: Could not load OpenCV DNN face detector ({e}). Falling back to Haar Cascade.")
+        return None
+
+
+def blur_faces(img, blur_factor=3.0, confidence_threshold=0.5):
+    """
+    Detect faces using OpenCV DNN (SSD ResNet-10) and blur them to anonymize.
+    Falls back to Haar Cascade if DNN model unavailable.
+    
+    Args:
+        img: numpy array (RGB format)
+        blur_factor: higher value means more blur
+        confidence_threshold: confidence threshold for DNN detection (0.0 - 1.0)
+    """
+    if img is None:
+        return None
+        
+    result = img.copy()
+    (h, w) = result.shape[:2]
+    faces = []
+    
+    # Try OpenCV DNN Face Detector first
+    net = _get_dnn_face_net()
+    if net is not None:
+        try:
+            # OpenCV DNN expects BGR for mean subtraction
+            bgr_img = cv2.cvtColor(result, cv2.COLOR_RGB2BGR)
+            blob = cv2.dnn.blobFromImage(cv2.resize(bgr_img, (300, 300)), 1.0, (300, 300), (104.0, 177.0, 123.0))
+            net.setInput(blob)
+            detections = net.forward()
+            
+            for i in range(0, detections.shape[2]):
+                confidence = detections[0, 0, i, 2]
+                if confidence > confidence_threshold:
+                    box = detections[0, 0, i, 3:7] * np.array([w, h, w, h])
+                    (startX, startY, endX, endY) = box.astype("int")
+                    
+                    startX, startY = max(0, startX), max(0, startY)
+                    endX, endY = min(w, endX), min(h, endY)
+                    
+                    if endX > startX and endY > startY:
+                        faces.append((startX, startY, endX - startX, endY - startY))
+        except Exception as e:
+            print(f"DNN face detection error: {e}")
+            faces = []
+            
+    # Fallback to Haar Cascade if no faces found with DNN or DNN failed
+    if not faces:
+        gray = cv2.cvtColor(result, cv2.COLOR_RGB2GRAY)
+        cascade_path = cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
+        face_cascade = cv2.CascadeClassifier(cascade_path)
+        detected = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
+        if len(detected) > 0:
+            faces = [(x, y, w_box, h_box) for (x, y, w_box, h_box) in detected]
+            
+    # Apply Gaussian Blur to detected faces
+    for (x, y, w_box, h_box) in faces:
+        roi = result[y:y+h_box, x:x+w_box]
+        
+        kw = int(w_box / blur_factor) | 1
+        kh = int(h_box / blur_factor) | 1
+        
+        blurred_roi = cv2.GaussianBlur(roi, (kw, kh), 0)
+        result[y:y+h_box, x:x+w_box] = blurred_roi
+        
+    return result
+
+
+
 def save_best_worst_samples(metrics_df, image_pairs, metric_name, output_dir, n_samples=5):
     """
     Lưu các sample ảnh tốt nhất và tệ nhất theo metric
@@ -326,6 +424,10 @@ def save_best_worst_samples(metrics_df, image_pairs, metric_name, output_dir, n_
         if orig_img is not None and gen_img is not None:
             orig_img, gen_img = ensure_same_size(orig_img, gen_img)
             
+            # Blur faces before saving visualization
+            orig_img = blur_faces(orig_img)
+            gen_img = blur_faces(gen_img)
+            
             # Create comparison
             fig = create_side_by_side_comparison(
                 orig_img, gen_img,
@@ -357,6 +459,10 @@ def save_best_worst_samples(metrics_df, image_pairs, metric_name, output_dir, n_
         
         if orig_img is not None and gen_img is not None:
             orig_img, gen_img = ensure_same_size(orig_img, gen_img)
+            
+            # Blur faces before saving visualization
+            orig_img = blur_faces(orig_img)
+            gen_img = blur_faces(gen_img)
             
             # Create comparison
             fig = create_side_by_side_comparison(

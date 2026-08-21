@@ -50,4 +50,5 @@ Thumbs.db
 # Project specific
 *.csv
 evaluation_results/
+evaluation_results_baseline/
 evaluation_results_finetuned/
